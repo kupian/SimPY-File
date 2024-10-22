@@ -11,6 +11,7 @@ if len(sys.argv) == 5:
     FILENAME = sys.argv[4]
 
 cli_sock.connect((HOST, int(PORT)))
+print(f"Connected to {HOST}:{PORT}")
 
 if REQ_TYPE == REQ_TYPES.PUT.value:
     send_file(cli_sock, FILENAME)

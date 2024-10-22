@@ -1,6 +1,7 @@
 import socket
 import json
 import os
+from progress.bar import ChargingBar
 from enum import Enum
 
 RECV_BUFFER = 1024
@@ -9,95 +10,138 @@ class REQ_TYPES(Enum):
     PUT = "put"
     GET = "get"
     LIST = "list"
-    INFO = "info"
 
 class STATUS_CODES(Enum):
     ALLOW = "000"
     DENY = "100"
 
-def request_file(socket: socket.socket, filename: str):
+def request_file(sock: socket.socket, filename: str):
+    '''
+    Requests and downloads a file from the server
+    '''
     # Initiate GET request with server
-    request = json.dumps({
-                "type": REQ_TYPES.GET.value,
-                "filename": filename
-            })
+    try:
+        print(f"Requesting {filename}")
+        request = json.dumps({
+                    "type": REQ_TYPES.GET.value,
+                    "filename": filename
+                })
 
-    socket.sendall(request.encode())
+        sock.sendall(request.encode())
+    except socket.error:
+        print("Error sending file request")
+        sock.close()
+        print("--Closed connection--")
+        return
     
     # We expect back a PUT packet with the file info
-    message = get_response(socket)
-    print(message)
-
+    message = get_response(sock)
     if message.get("type") == REQ_TYPES.PUT.value:
-        content_length = message.get("content_length")
+        content_length = message.get("content_length", None)
+        if content_length is None:
+            print("Unknown file size")
+            sock.close()
+            print("--Closed connection--")
+            return
 
         # We send back approval of the file info
-        allow(socket, "File info received. Continue to send file.")
+        allow(sock, "File info received. Continue to send file.")
 
         # First we expect an acknowledgement that the file will be sent
-        message = get_response(socket)
-
-        print(f"{message.get("status_code")}: {message.get("message")}")
+        message = get_response(sock)
         if message.get("status_code") == STATUS_CODES.ALLOW.value:
             # Now we are expecting the file data
-            receive_file(socket, filename, content_length)
-    
-    socket.close()
+            receive_file(sock, filename, content_length)
+            return
+        else:
+            print(f"Server rejected file transfer: {message.get("message")}")
+    else:
+        print(f"Server error: {message.get("message")}")
+
+    sock.close()
+    print("--Closed connection--")
 
 def get_file_size(filename) -> int:
+    '''
+    Get the size in bytes of a local file
+    '''
     try:
         with open(filename, "rb") as f:
             content_length = os.fstat(f.fileno()).st_size
         return content_length
     except FileNotFoundError:
-        return 0
+        print("Error: file not found")
+        return -1
 
-def send_file(socket: socket.socket, filename: str):
+def send_file(sock: socket.socket, filename: str):
     content_length = get_file_size(filename)
-    try:
-        with open(filename, "rb") as f:
+    if content_length < 1:
+        reject(sock, "File does not exist")
+        return
 
+    try:
+        print(f"Requesting to send {filename}")
+        with open(filename, "rb") as f:
             request = json.dumps({
                 "type": REQ_TYPES.PUT.value,
                 "filename": filename,
                 "content_length": content_length
             })
-            socket.sendall(request.encode("utf-8"))
+            sock.sendall(request.encode("utf-8"))
 
-            message = get_response(socket)
+            message = get_response(sock)
             status_code = message.get("status_code")
-
-            print(f"{status_code}: {message.get("message")}")
 
             if status_code == STATUS_CODES.ALLOW.value:
                 # First we acknowledge that we are going to send the file
-                allow(socket, "File approval acknowledged. Sending file...")
+                allow(sock, "File approval acknowledged. Sending file...")
                 print(f"Sending {filename}...")
                 # Then we send the file
                 file_content = f.read()
-                socket.sendall(file_content)
+                sock.sendall(file_content)
 
-                message = get_response(socket)
+                message = get_response(sock)
                 status_code = message.get("status_code")
 
+                if status_code == STATUS_CODES.ALLOW.value:
+                    print("File sent successfully")
+                else:
+                    print(f"Error sending file: {message.get("message")}")
+            else:
+                print(f"Remote error: {message.get("message")}")
     except FileNotFoundError:
         print("File not found")
+    except socket.error:
+        print("Error sending packet")
     finally:
-        socket.close()
+        sock.close()
         print("--Closed connection--")
 
 def receive_file(socket: socket.socket, filename: str, content_length):
-    received = 0
+    bytes_received = 0
+    # Using 'wb' as opposed to 'xb' as this function is shared by server
+    # and client, and the client should be allowed to overwrite existing files.
+    
+    # Overwrite checking for the server is moved to the initial request
+    # handling in server.py
     with open(filename, "wb") as f:
 
-        print(f"Downloading {filename}...")
+        with ChargingBar("Downloading", max=content_length/RECV_BUFFER) as bar:
 
-        while received < content_length:
-            data = socket.recv(RECV_BUFFER)
-            received += len(data)
-            f.write(data)
-            if not data:
-                print("--Connection closed unexpectedly--")
+            while bytes_received < content_length:
+                data = socket.recv(RECV_BUFFER)
+                try:
+                    if not data:
+                        print("--Connection closed unexpectedly--")
+                        raise IOError
+
+                    bytes_received += len(data)
+                    f.write(data)
+                except IOError:
+                    print("Error writing data to file")
+                    os.remove(filename)
+                bar.next()
+            bar.finish()
 
     print("File transfer complete")
 
@@ -107,47 +151,89 @@ def receive_file(socket: socket.socket, filename: str, content_length):
     socket.close()
     print("--Closed connection--")
 
-def get_listing(socket: socket.socket):
-    request = json.dumps({
-        "type": REQ_TYPES.LIST.value
-    })
-    socket.sendall(request.encode())
+def get_listing(sock: socket.socket) -> list[str]:
+    '''
+    Requests a directory listing
+    '''
+    try:
+        print("Requesting directory listing")
+        request = json.dumps({
+            "type": REQ_TYPES.LIST.value
+        })
+        sock.sendall(request.encode())
+    except socket.error:
+        print("Error requesting directory listing")
+        return []
     
-    response = get_response(socket)
-    socket.close()
+    response = get_response(sock)
+    sock.close()
+
     if response.get("status_code") == STATUS_CODES.ALLOW.value:
+        print("Directory listing from server:")
         return response.get("files")
     else:
         return []
 
-def send_listing(socket: socket.socket):
+def send_listing(sock: socket.socket):
+    '''
+    Sends a directory listing
+    '''
     files = os.listdir(".")
-    response = json.dumps({
-        "status_code": STATUS_CODES.ALLOW.value,
-        "message": "File listing message",
-        "files": files
-    })
-    socket.sendall(response.encode())
-    socket.close()
-
-def get_response(socket: socket.socket) -> dict:
-    #TODO: add error handling
-    response = socket.recv(RECV_BUFFER)
-    message = json.loads(response)
-    return message
-
-def allow(socket: socket.socket, message: str):
-    #TODO: add error handling
-    approval = json.dumps({
+    try:
+        print("Sending directory listing")
+        response = json.dumps({
             "status_code": STATUS_CODES.ALLOW.value,
-            "message": message
+            "message": "File listing message",
+            "files": files
         })
-    socket.sendall(approval.encode())
+        sock.sendall(response.encode())
+    except socket.error:
+        print("Error sending directory listing")
+    else:
+        print("Successfully sent directory listing")
+    finally:
+        sock.close()
+        print("--Closed connection--")
 
-def deny(socket: socket.socket, message: str):
-    #TODO: add error handling
-    rejection = json.dumps({
-            "status_code": STATUS_CODES.DENY.value,
-            "message": message
-        })
-    socket.sendall(rejection.encode())
+def get_response(sock: socket.socket) -> dict:
+    '''
+    Receive a socket message and load the JSON
+    '''
+    response = sock.recv(RECV_BUFFER)
+    try:
+        message = json.loads(response)
+        return message
+    except json.JSONDecodeError:
+        print("Error decoding response")
+        return {}
+
+def allow(sock: socket.socket, message="Approved"):
+    '''
+    Sends an approval packet with a given message
+    '''
+    try:
+        approval = json.dumps({
+                "status_code": STATUS_CODES.ALLOW.value,
+                "message": message
+            })
+        sock.sendall(approval.encode())
+    except socket.error:
+        print("Error sending approval packet")
+        sock.close()
+        print("--Closed connection--")
+
+def reject(sock: socket.socket, message="Rejected"):
+    '''
+    Sends a rejection packet and closes the socket
+    '''
+    try:
+        rejection = json.dumps({
+                "status_code": STATUS_CODES.DENY.value,
+                "message": message
+            })
+        sock.sendall(rejection.encode())
+    except socket.error:
+        print("Error sending rejection packet")
+    finally:
+        sock.close()
+        print("--Closed connection--")
