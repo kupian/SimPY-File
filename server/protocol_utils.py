@@ -77,6 +77,7 @@ def send_file(sock: socket.socket, filename: str):
     content_length = get_file_size(filename)
     if content_length < 1:
         reject(sock, "File does not exist")
+        print("Error: Cannot send empty file")
         return
 
     try:
