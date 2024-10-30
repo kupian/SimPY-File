@@ -5,6 +5,7 @@ from protocol_utils import RECV_BUFFER, send_file, receive_file, REQ_TYPES, get_
 
 HOST = "0.0.0.0"
 PORT = sys.argv[1]
+FILENAME_MAX_LENGTH = 32
 
 def main():
 
@@ -30,8 +31,10 @@ def main():
 
         elif req_type == REQ_TYPES.PUT.value:
             filename = request.get("filename")
-            print(f"{cli_addr} wants to upload {filename}")
             content_length = request.get("content_length")
+            if len(filename) > FILENAME_MAX_LENGTH or content_length <= 0:
+                reject(cli_sock, "Filename exceeds max length")
+            print(f"{cli_addr} wants to upload {filename}")
             try:
                 with open(filename, "xb") as f:
                     accept_file(cli_sock, filename, content_length)     

@@ -54,7 +54,7 @@ def request_file(sock: socket.socket, filename: str):
             receive_file(sock, filename, content_length)
             return
         else:
-            print(f"Server rejected file transfer: {message.get("message")}")
+            print(f"Server rejected file transfer: {message.get('message')}")
     else:
         print(f"Server error: {message.get("message")}")
 
