@@ -32,7 +32,7 @@ def main():
         elif req_type == REQ_TYPES.PUT.value:
             filename = request.get("filename")
             content_length = request.get("content_length")
-            if len(filename) > FILENAME_MAX_LENGTH or content_length <= 0:
+            if len(filename) > FILENAME_MAX_LENGTH:
                 reject(cli_sock, "Filename exceeds max length")
             print(f"{cli_addr} wants to upload {filename}")
             try:

@@ -91,10 +91,12 @@ def send_file(sock: socket.socket, filename: str):
         filename (str): Name of local file to be sent
     """
     content_length = get_file_size(filename)
-    if content_length < 1:
+    if content_length < 0:
         reject(sock, "File does not exist")
-        print("Error: Cannot send empty file")
+        print("Error: Invalid content length")
         return
+    
+    bytes_sent = 0
 
     try:
         print(f"Requesting to send {filename}")
@@ -114,8 +116,10 @@ def send_file(sock: socket.socket, filename: str):
                 allow(sock, "File approval acknowledged. Sending file...")
                 print(f"Sending {filename}...")
                 # Then we send the file
-                file_content = f.read()
-                sock.sendall(file_content)
+                while bytes_sent < content_length:
+                    file_content = f.read(RECV_BUFFER)
+                    sock.sendall(file_content)
+                    bytes_sent += len(file_content)
 
                 message = get_response(sock)
                 status_code = message.get("status_code")
@@ -128,8 +132,9 @@ def send_file(sock: socket.socket, filename: str):
                 print(f"Remote error: {message.get("message")}")
     except FileNotFoundError:
         print("File not found")
-    except socket.error:
-        print("Error sending packet")
+    except socket.error as e:
+        print("Error sending packet:")
+        print(e)
     finally:
         sock.close()
         print("--Closed connection--")
@@ -167,7 +172,10 @@ def receive_file(socket: socket.socket, filename: str, content_length):
                     f.write(data)
                 except IOError:
                     print("Error writing data to file")
+                    socket.close()
                     os.remove(filename)
+                    return
+                    
                 bar.next()
             bar.finish()
 
