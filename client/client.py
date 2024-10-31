@@ -1,11 +1,12 @@
 import socket
 import sys
-from .. protocol_utils import RECV_BUFFER, send_file, request_file, REQ_TYPES, get_listing
+from protocol_utils import RECV_BUFFER, send_file, request_file, REQ_TYPES, get_listing
 
 cli_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 HOST,PORT,REQ_TYPE = sys.argv[1:4]
 FILENAME = ""
+
 if len(sys.argv) == 5:
     FILENAME = sys.argv[4]
 

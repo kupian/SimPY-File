@@ -48,12 +48,22 @@ def main():
 
         cli_sock.close()
 
+
 def accept_file(sock: socket.socket, filename: str, content_length: int):
+    """Accept a file upload request
+
+    Args:
+        sock (socket.socket): Socket to accept file from
+        filename (str): Name of the file to accept
+        content_length (int): Size in bytes of the file
+    """
+    
     print("File upload approved")
     allow(sock, "File upload approved")
+    
     # Delete the file we just created to check its existence
-    # TODO: probaly a better way to do this
     os.remove(filename)
+    
     # Now we expect acknowledgement
     acknowledgement = get_response(sock)
     if acknowledgement.get("status_code") == "000":    

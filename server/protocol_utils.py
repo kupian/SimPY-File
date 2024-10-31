@@ -16,9 +16,13 @@ class STATUS_CODES(Enum):
     DENY = "100"
 
 def request_file(sock: socket.socket, filename: str):
-    '''
-    Requests and downloads a file from the server
-    '''
+    """Attempts to download a file from the server
+
+    Args:
+        sock (socket.socket): Socket to download the file from
+        filename (str): Name of the desired file
+    """
+    
     # Initiate GET request with server
     try:
         print(f"Requesting {filename}")
@@ -49,6 +53,7 @@ def request_file(sock: socket.socket, filename: str):
 
         # First we expect an acknowledgement that the file will be sent
         message = get_response(sock)
+        
         if message.get("status_code") == STATUS_CODES.ALLOW.value:
             # Now we are expecting the file data
             receive_file(sock, filename, content_length)
@@ -62,9 +67,14 @@ def request_file(sock: socket.socket, filename: str):
     print("--Closed connection--")
 
 def get_file_size(filename) -> int:
-    '''
-    Get the size in bytes of a local file
-    '''
+    """Get the size in bytes of a locally stored file
+
+    Args:
+        filename (_type_): Name of the file to check
+
+    Returns:
+        int: Size in bytes
+    """
     try:
         with open(filename, "rb") as f:
             content_length = os.fstat(f.fileno()).st_size
@@ -74,6 +84,12 @@ def get_file_size(filename) -> int:
         return -1
 
 def send_file(sock: socket.socket, filename: str):
+    """Sends a file to a socket connection
+
+    Args:
+        sock (socket.socket): Socket to send file through
+        filename (str): Name of local file to be sent
+    """
     content_length = get_file_size(filename)
     if content_length < 1:
         reject(sock, "File does not exist")
@@ -119,11 +135,22 @@ def send_file(sock: socket.socket, filename: str):
         print("--Closed connection--")
 
 def receive_file(socket: socket.socket, filename: str, content_length):
+    """Receive a file from a socket connection
+
+    Args:
+        socket (socket.socket): Socket to receive file over
+        filename (str): Name of the file to be received
+        content_length (_type_): Size in bytes of the file
+
+    Raises:
+        IOError: Raised if there is an error writing the file
+    """
     bytes_received = 0
+    
     # Using 'wb' as opposed to 'xb' as this function is shared by server
     # and client, and the client should be allowed to overwrite existing files.
     
-    # Overwrite checking for the server is moved to the initial request
+    # Overwrite checking for the server is performed with the initial request
     # handling in server.py
     with open(filename, "wb") as f:
 
@@ -153,9 +180,14 @@ def receive_file(socket: socket.socket, filename: str, content_length):
     print("--Closed connection--")
 
 def get_listing(sock: socket.socket) -> list[str]:
-    '''
-    Requests a directory listing
-    '''
+    """Request a listing of files in the remote directory
+
+    Args:
+        sock (socket.socket): Socket to be used
+
+    Returns:
+        list[str]: A list of filename strings
+    """
     try:
         print("Requesting directory listing")
         request = json.dumps({
@@ -176,9 +208,11 @@ def get_listing(sock: socket.socket) -> list[str]:
         return []
 
 def send_listing(sock: socket.socket):
-    '''
-    Sends a directory listing
-    '''
+    """Send a list of files in the local directory
+
+    Args:
+        sock (socket.socket): Socket to be sent over
+    """
     files = os.listdir(".")
     try:
         print("Sending directory listing")
@@ -197,9 +231,14 @@ def send_listing(sock: socket.socket):
         print("--Closed connection--")
 
 def get_response(sock: socket.socket) -> dict:
-    '''
-    Receive a socket message and load the JSON
-    '''
+    """Receive a packet and decode the JSON
+
+    Args:
+        sock (socket.socket): Socket to be received from
+
+    Returns:
+        dict: A dictionary corresponding to the JSON data
+    """
     response = sock.recv(RECV_BUFFER)
     try:
         message = json.loads(response)
@@ -209,9 +248,12 @@ def get_response(sock: socket.socket) -> dict:
         return {}
 
 def allow(sock: socket.socket, message="Approved"):
-    '''
-    Sends an approval packet with a given message
-    '''
+    """Sends an ALLOW packet
+
+    Args:
+        sock (socket.socket): Socket to be sent over
+        message (str, optional): Message to be sent. Defaults to "Approved".
+    """
     try:
         approval = json.dumps({
                 "status_code": STATUS_CODES.ALLOW.value,
@@ -224,9 +266,12 @@ def allow(sock: socket.socket, message="Approved"):
         print("--Closed connection--")
 
 def reject(sock: socket.socket, message="Rejected"):
-    '''
-    Sends a rejection packet and closes the socket
-    '''
+    """Sends a REJECT packet and closes the connection
+
+    Args:
+        sock (socket.socket): Socket to be sent over
+        message (str, optional): Message to be sent. Defaults to "Rejected".
+    """
     try:
         rejection = json.dumps({
                 "status_code": STATUS_CODES.DENY.value,
