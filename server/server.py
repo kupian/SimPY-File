@@ -1,7 +1,7 @@
 import socket
 import os
 import sys
-from protocol_utils import RECV_BUFFER, send_file, receive_file, REQ_TYPES, get_file_size, allow, reject, get_response, send_listing
+from protocol_utils import send_file, receive_file, REQ_TYPES, allow, reject, get_response, send_listing
 
 HOST = "0.0.0.0"
 PORT = sys.argv[1]

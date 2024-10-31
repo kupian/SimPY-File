@@ -1,6 +1,6 @@
 import socket
 import sys
-from protocol_utils import RECV_BUFFER, send_file, request_file, REQ_TYPES, get_listing
+from protocol_utils import send_file, request_file, REQ_TYPES, get_listing
 
 cli_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
